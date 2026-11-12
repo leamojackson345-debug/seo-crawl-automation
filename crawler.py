@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -24,6 +25,13 @@ from urllib.parse import urldefrag, urljoin, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
+
+# Links matching any of these regexes are not crawled (language switchers, login, filter pages...)
+DEFAULT_EXCLUDES = [
+    r"/change/(language|currency)",
+    r"/(login|logout|favorites|auth)(/|\?|$)",
+    r"/used-cars/search\?",
+]
 
 FIELDS = [
     "Address", "Content Type", "Status Code", "Status", "Indexability",
@@ -92,7 +100,7 @@ def fetch(session, url, timeout, ua, delay):
     return rec, links
 
 
-def crawl(start, max_pages, workers, delay, timeout, ua):
+def crawl(start, max_pages, workers, delay, timeout, ua, excludes=()):
     start = clean(start)
     root = host_key(start)
     session = requests.Session()
@@ -101,10 +109,16 @@ def crawl(start, max_pages, workers, delay, timeout, ua):
 
     rp = robotparser.RobotFileParser()
     try:
-        rp.set_url(urljoin(start, "/robots.txt"))
-        rp.read()
-    except Exception:
+        resp = session.get(urljoin(start, "/robots.txt"), timeout=timeout, headers={"User-Agent": ua})
+        if resp.status_code == 200:
+            rp.parse(resp.text.splitlines())
+            print("robots.txt loaded")
+        else:
+            rp = None  # 403/404/etc: no usable robots.txt, so allow everything
+            print(f"robots.txt returned {resp.status_code}: ignoring it")
+    except requests.RequestException as exc:
         rp = None
+        print(f"robots.txt not reachable ({type(exc).__name__}): ignoring it")
 
     depth = {start: 0}
     records: dict[str, dict] = {}
@@ -134,6 +148,8 @@ def crawl(start, max_pages, workers, delay, timeout, ua):
                 for link in links:
                     if not link.startswith(("http://", "https://")) or host_key(link) != root:
                         continue
+                    if any(rx.search(link) for rx in excludes):
+                        continue
                     inlinks.setdefault(link, set()).add(u)
                     if link not in depth:
                         depth[link] = depth[u] + 1
@@ -153,12 +169,20 @@ def main():
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--delay", type=float, default=0.0, help="Seconds to wait before each request, per worker")
     ap.add_argument("--timeout", type=int, default=20)
+    ap.add_argument("--exclude", action="append", default=[], help="Regex of URLs not to crawl (repeatable)")
+    ap.add_argument("--no-default-excludes", action="store_true")
     ap.add_argument("--user-agent", default="SEO-Audit-Bot/1.0 (+technical SEO monitoring)")
     a = ap.parse_args()
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    records, inlinks = crawl(a.url, a.max_pages, a.workers, a.delay, a.timeout, a.user_agent)
+    patterns = a.exclude + ([] if a.no_default_excludes else DEFAULT_EXCLUDES)
+    excludes = [re.compile(x) for x in patterns]
+    records, inlinks = crawl(a.url, a.max_pages, a.workers, a.delay, a.timeout, a.user_agent, excludes)
+    if len(records) <= 1:
+        first = next(iter(records.values()), {})
+        print(f"WARNING: only {len(records)} URL(s) crawled. First URL: status={first.get('Status Code')} "
+              f"{first.get('Status')}. The site may be blocking this crawler.")
 
     with open(out / "internal_all.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=FIELDS)

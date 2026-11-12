@@ -1,14 +1,33 @@
 # Pages where noindex / nofollow / canonical problems are treated as critical.
-# Homepage and everything at crawl depth <= 1 is already included (--important-depth).
-#
-# Syntax (one entry per line):
-#   https://example.com/pricing      exact URL
-#   /about                           exact path
-#   /products/*                      path prefix
-#   re:^https://example\.com/p/\d+   regex against the full URL
+# The homepage and every page it links to directly are already included automatically.
+# Paths only (no domain). "/x" = that one page, "/x/*" = everything under /x/
+# Written for https://www.sbtjapan.com
 
-/pricing
+# Main sections
+/used-cars
+/why-choose-sbt
+/customer-reviews
 /contact
-/products/*
-/services/*
-/blog/*
+/request-car
+/signup
+/news-letter
+
+# Car brand pages (Toyota, Honda, Nissan, ...)
+/used-cars/maker/*
+
+# Help centre, how to buy, shipping
+/support
+/support/*
+
+# About us and country offices
+/our-company
+/our-company/*
+/global-office
+/global-office/*
+
+# News and articles
+/sbtnews
+/sbtnews/*
+
+# Deliberately NOT listed: /used-cars/search (filter pages, often noindex on purpose),
+# login, favorites and policy pages.

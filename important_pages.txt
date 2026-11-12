@@ -1,0 +1,14 @@
+# Pages where noindex / nofollow / canonical problems are treated as critical.
+# Homepage and everything at crawl depth <= 1 is already included (--important-depth).
+#
+# Syntax (one entry per line):
+#   https://example.com/pricing      exact URL
+#   /about                           exact path
+#   /products/*                      path prefix
+#   re:^https://example\.com/p/\d+   regex against the full URL
+
+/pricing
+/contact
+/products/*
+/services/*
+/blog/*
